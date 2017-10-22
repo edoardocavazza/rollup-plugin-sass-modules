@@ -1,6 +1,6 @@
 {
   "name": "rollup-plugin-sass-modules",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Handle SASS files as modules with Rollup.",
   "main": "dist/rollup-plugin-sass-modules.js",
   "scripts": {
