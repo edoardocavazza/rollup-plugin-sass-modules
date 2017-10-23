@@ -49,6 +49,7 @@ function nodeResolver(url, prev, options) {
 module.exports = function(options) {
     var filter = rollupPluginutils.createFilter(options.include || ['**/*.scss', '**/*.sass'], options.exclude);
     var importer = options.importer || nodeResolver;
+    var processor = options.processor || (function (code) { return global.Promise.resolve(code); });
     var defaults = options.options || {};
     var file;
     var css;
@@ -73,24 +74,39 @@ module.exports = function(options) {
             }, defaults);
             sassOptions.omitSourceMapUrl = true;
             sassOptions.sourceMapEmbed = false;
-            var rendered = sass.renderSync(sassOptions);
-            var jsMaps;
-            css = rendered.css.toString()
-                .replace(/\\/g, '\\\\')
-                .replace(/'/g, '\\\'')
-                .replace(/\n/g, '');
-            if (rendered.map) {
-                jsMaps = rendered.map.toString();
-            }
-            if (options.insert) {
-                jsCode += stylize(css);
-            } else {
-                jsCode += "export default '" + css + "';";
-            }
-            return {
-                code: jsCode,
-                map: jsMaps ? jsMaps : { mappings: '' },
-            };
+            return new global.Promise(function (resolve, reject) {
+                sass.render(sassOptions, function (err, result) {
+                    if (err) {
+                        reject(err);
+                    } else {
+                        resolve(result);
+                    }
+                });
+            }).then(function (result) {
+                var jsMaps;
+                css = result.css.toString()
+                    .replace(/\\/g, '\\\\')
+                    .replace(/'/g, '\\\'')
+                    .replace(/\n/g, '');
+                if (result.map) {
+                    jsMaps = result.map.toString();
+                }
+                var post = processor(css);
+                if (!(post instanceof global.Promise)) {
+                    post = global.Promise.resolve(post);
+                }
+                return post.then(function (css) {
+                    if (options.insert) {
+                        jsCode += stylize(css);
+                    } else {
+                        jsCode += "export default '" + css + "';";
+                    }
+                    return global.Promise.resolve({
+                        code: jsCode,
+                        map: jsMaps ? jsMaps : { mappings: '' },
+                    });
+                });
+            });
         },
         ongenerate: function ongenerate(options) {
             if (defaults.outFile) {
