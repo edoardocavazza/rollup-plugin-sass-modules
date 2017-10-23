@@ -7,9 +7,10 @@ var sass = require('node-sass');
 var resolve = require('resolve');
 var importRegex = /@import[\s'"]*([^;'"]*)[;'"]/g;
 var includePaths = ['node_modules'];
+var STYLE_EXTENSIONS = ['.scss', '.sass', '.css'];
 
 function stylize(css) {
-    return ("\n\n(function(){\n    const head = document.head || document.getElementsByTagName('head')[0];\n    const style = document.createElement('style');\n    style.textContent = '" + (css.replace(/\n/g, '')) + "';\n    head.appendChild(style);\n})();\n");
+    return ("\n\n(function(){\n    const head = document.head || document.getElementsByTagName('head')[0];\n    const style = document.createElement('style');\n    style.textContent = '" + (css.replace(/'/g, '\\\'').replace(/\n/g, '')) + "';\n    head.appendChild(style);\n})();\n");
 }
 
 function nodeResolver(url, prev, options) {
@@ -49,16 +50,12 @@ module.exports = function(options) {
     var filter = rollupPluginutils.createFilter(options.include || ['**/*.scss', '**/*.sass'], options.exclude);
     var importer = options.importer || nodeResolver;
     var defaults = options.options || {};
-    var resolved = [];
-    var files = [];
+    var file;
     var css;
     return {
         name: 'sass-modules',
         transform: function transform(code, id) {
             if (!filter(id)) { return null; }
-            if (resolved.indexOf(id) === -1) {
-                resolved = [];
-            }
             var match = importRegex.exec(code);
             var matches = [];
             while (match) {
@@ -66,44 +63,56 @@ module.exports = function(options) {
                 match = importRegex.exec(code);
             }
             matches = matches.map(function (url) { return importer(url, id).file; });
-            var jsCode = matches.map(function (url) { return ("import '" + url + "';"); }).join('\n');
+            var jsCode = '';
+            jsCode += matches.map(function (url, index) { return ("import STYLE_" + index + " from '" + url + "';"); }).join('\n');
+            var sassOptions = Object.assign({
+                file: id,
+                data: code,
+                includePaths: includePaths,
+                importer: function (url, prev) { return importer(url, prev, options); },
+            }, defaults);
+            sassOptions.omitSourceMapUrl = true;
+            sassOptions.sourceMapEmbed = false;
+            var rendered = sass.renderSync(sassOptions);
             var jsMaps;
-            if (resolved.length === 0) {
-                var sassOptions = Object.assign({
-                    file: id,
-                    data: code,
-                    includePaths: includePaths,
-                    importer: function (url, prev) { return importer(url, prev, options); },
-                }, defaults);
-                var rendered = sass.renderSync(sassOptions);
-                css = rendered.css.toString();
-                if (options.insert) {
-                    jsCode += stylize(css.replace(/'/g, '\\\''));
-                } else if (!defaults.outFile) {
-                    jsCode += "\nexport default '" + (css.replace(/'/g, '\\\'')) + "'";
-                } else {
-                    files.push(css);
-                }
-                if (rendered.map) {
-                    jsMaps = rendered.map.toString();
-                }
+            css = rendered.css.toString();
+            if (rendered.map) {
+                jsMaps = rendered.map.toString();
             }
-            matches.forEach(function (url) {
-                if (resolved.indexOf(url) === -1) {
-                    resolved.push(url);
-                }
-            });
-            if (jsMaps) {
-                return {
-                    code: jsCode,
-                    map: jsMaps,
-                };
+            if (options.insert) {
+                jsCode += stylize(css);
+            } else {
+                jsCode += "export default `" + css + "`";
             }
-            return jsCode;
+            return {
+                code: jsCode,
+                map: jsMaps ? jsMaps : { mappings: '' },
+            };
+        },
+        ongenerate: function ongenerate(options) {
+            if (defaults.outFile) {
+                file = '';
+                var bundle = options.bundle;
+                bundle.modules.forEach(function (mod) {
+                    if (STYLE_EXTENSIONS.indexOf(path.extname(mod.id)) === -1) {
+                        mod.dependencies.forEach(function (dep) {
+                            if (STYLE_EXTENSIONS.indexOf(path.extname(dep)) !== -1) {
+                                var sassOptions = Object.assign({
+                                    file: dep,
+                                    data: fs.readFileSync(dep, 'utf8'),
+                                    includePaths: includePaths,
+                                    importer: function (url, prev) { return importer(url, prev, options); },
+                                }, defaults);
+                                file += sass.renderSync(sassOptions).css.toString();
+                            }
+                        });
+                    }
+                });
+            }
         },
         onwrite: function onwrite() {
-            if (defaults.outFile) {
-                fs.writeFileSync(defaults.outFile, files.join('\n'));
+            if (defaults.outFile && file) {
+                fs.writeFileSync(defaults.outFile, file);
                 return global.Promise.resolve();
             }
         },
