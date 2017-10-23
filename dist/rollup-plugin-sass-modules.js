@@ -10,7 +10,7 @@ var includePaths = ['node_modules'];
 var STYLE_EXTENSIONS = ['.scss', '.sass', '.css'];
 
 function stylize(css) {
-    return ("\n\n(function(){\n    const head = document.head || document.getElementsByTagName('head')[0];\n    const style = document.createElement('style');\n    style.textContent = '" + (css.replace(/'/g, '\\\'').replace(/\n/g, '')) + "';\n    head.appendChild(style);\n})();\n");
+    return ("\n\n(function(){\n    const head = document.head || document.getElementsByTagName('head')[0];\n    const style = document.createElement('style');\n    style.textContent = '" + css + "';\n    head.appendChild(style);\n})();\n");
 }
 
 function nodeResolver(url, prev, options) {
@@ -75,14 +75,17 @@ module.exports = function(options) {
             sassOptions.sourceMapEmbed = false;
             var rendered = sass.renderSync(sassOptions);
             var jsMaps;
-            css = rendered.css.toString();
+            css = rendered.css.toString()
+                .replace(/\\/g, '\\\\')
+                .replace(/'/g, '\\\'')
+                .replace(/\n/g, '');
             if (rendered.map) {
                 jsMaps = rendered.map.toString();
             }
             if (options.insert) {
                 jsCode += stylize(css);
             } else {
-                jsCode += "export default `" + css + "`";
+                jsCode += "export default '" + css + "';";
             }
             return {
                 code: jsCode,
