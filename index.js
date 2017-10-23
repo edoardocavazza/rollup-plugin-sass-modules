@@ -13,7 +13,7 @@ function stylize(css) {
 (function(){
     const head = document.head || document.getElementsByTagName('head')[0];
     const style = document.createElement('style');
-    style.textContent = '${css.replace(/'/g, '\\\'').replace(/\n/g, '')}';
+    style.textContent = '${css}';
     head.appendChild(style);
 })();
 `;
@@ -81,14 +81,17 @@ module.exports = function(options) {
             sassOptions.sourceMapEmbed = false;
             let rendered = sass.renderSync(sassOptions);
             let jsMaps;
-            css = rendered.css.toString();
+            css = rendered.css.toString()
+                .replace(/\\/g, '\\\\')
+                .replace(/'/g, '\\\'')
+                .replace(/\n/g, '');
             if (rendered.map) {
                 jsMaps = rendered.map.toString();
             }
             if (options.insert) {
                 jsCode += stylize(css);
             } else {
-                jsCode += `export default \`${css}\``;
+                jsCode += `export default '${css}';`;
             }
             return {
                 code: jsCode,
