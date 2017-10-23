@@ -55,6 +55,7 @@ function nodeResolver(url, prev, options) {
 module.exports = function(options) {
     const filter = rollupPluginutils.createFilter(options.include || ['**/*.scss', '**/*.sass'], options.exclude);
     const importer = options.importer || nodeResolver;
+    const processor = options.processor || ((code) => global.Promise.resolve(code));
     const defaults = options.options || {};
     let file;
     let css;
@@ -79,24 +80,39 @@ module.exports = function(options) {
             }, defaults);
             sassOptions.omitSourceMapUrl = true;
             sassOptions.sourceMapEmbed = false;
-            let rendered = sass.renderSync(sassOptions);
-            let jsMaps;
-            css = rendered.css.toString()
-                .replace(/\\/g, '\\\\')
-                .replace(/'/g, '\\\'')
-                .replace(/\n/g, '');
-            if (rendered.map) {
-                jsMaps = rendered.map.toString();
-            }
-            if (options.insert) {
-                jsCode += stylize(css);
-            } else {
-                jsCode += `export default '${css}';`;
-            }
-            return {
-                code: jsCode,
-                map: jsMaps ? jsMaps : { mappings: '' },
-            };
+            return new global.Promise((resolve, reject) => {
+                sass.render(sassOptions, (err, result) => {
+                    if (err) {
+                        reject(err);
+                    } else {
+                        resolve(result);
+                    }
+                });
+            }).then((result) => {
+                let jsMaps;
+                css = result.css.toString()
+                    .replace(/\\/g, '\\\\')
+                    .replace(/'/g, '\\\'')
+                    .replace(/\n/g, '');
+                if (result.map) {
+                    jsMaps = result.map.toString();
+                }
+                let post = processor(css);
+                if (!(post instanceof global.Promise)) {
+                    post = global.Promise.resolve(post);
+                }
+                return post.then((css) => {
+                    if (options.insert) {
+                        jsCode += stylize(css);
+                    } else {
+                        jsCode += `export default '${css}';`;
+                    }
+                    return global.Promise.resolve({
+                        code: jsCode,
+                        map: jsMaps ? jsMaps : { mappings: '' },
+                    });
+                });
+            });
         },
         ongenerate(options) {
             if (defaults.outFile) {

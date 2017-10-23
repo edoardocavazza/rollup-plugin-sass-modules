@@ -47,3 +47,7 @@ minimatch glob pattern (or array) of files to exclude.
 See `node-sass` [options](https://github.com/sass/node-sass#options).
 
 If `outFile` option is provided, the plugin will automatically extract and write the compiled CSS.
+
+### `processor` (code) => Promise<{ code, map }>
+
+Post processor function.
