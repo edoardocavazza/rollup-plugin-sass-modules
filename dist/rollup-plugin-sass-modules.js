@@ -151,6 +151,7 @@ module.exports = function(options) {
             });
         },
         ongenerate: function ongenerate(options) {
+            var promise = global.Promise.resolve();
             if (defaults.outFile) {
                 file = '';
                 var bundle = options.bundle;
@@ -164,12 +165,21 @@ module.exports = function(options) {
                                     includePaths: includePaths,
                                     importer: function (url, prev) { return importer(url, prev, options); },
                                 }, defaults);
-                                file += sass.renderSync(sassOptions).css.toString();
+                                var css = sass.renderSync(sassOptions).css.toString();
+                                var post = processor(css);
+                                if (!(post instanceof global.Promise)) {
+                                    post = global.Promise.resolve(post);
+                                }
+                                promise = promise.then(function () { return post.then(function (css) {
+                                        file += css;
+                                    }); }
+                                );
                             }
                         });
                     }
                 });
             }
+            return promise;
         },
         onwrite: function onwrite() {
             if (defaults.outFile && file) {
