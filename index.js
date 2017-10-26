@@ -19,32 +19,60 @@ function stylize(css) {
 `;
 }
 
+function alternatives(url) {
+    let res = path.extname(url) ?
+        [url] :
+        STYLE_EXTENSIONS.map((ext) => `${url}${ext}`);
+    if (path.basename(url) !== '_') {
+        for (let i = 0, len = res.length; i < len; i++) {
+            res.push(
+                path.join(
+                    path.dirname(res[i]),
+                    `_${path.basename(res[i])}`
+                )
+            );
+        }
+    }
+    return res;
+}
+
 function nodeResolver(url, prev, options) {
     let mod;
     if (!url.match(/^[./]/)) {
         if (url[0] === '~') {
             mod = url.substring(1);
         } else {
-            let tryToResolve = path.resolve(path.dirname(prev), url);
-            if (!fs.existsSync(tryToResolve)) {
+            let toCheck = alternatives(path.join(path.dirname(prev), url));
+            let resolved = toCheck.find((f) => fs.existsSync(f));
+            if (resolved) {
+                url = resolved;
+            } else {
                 mod = url;
             }
         }
     }
     if (mod) {
-        try {
-            url = resolve.sync(mod, {
-                basedir: path.dirname(prev) || process.cwd(),
-            });
-            let base = path.join(url.replace(mod, ''), '**/*');
-            if (includePaths.indexOf(base) === -1) {
-                includePaths.push(base);
+        let toCheck = alternatives(mod);
+        let ok = false;
+        toCheck.forEach((modCheck) => {
+            if (!ok) {
+                try {
+                    url = resolve.sync(modCheck, {
+                        basedir: path.dirname(prev) || process.cwd(),
+                    });
+                    let base = path.join(url.replace(modCheck, ''), '**/*');
+                    if (includePaths.indexOf(base) === -1) {
+                        includePaths.push(base);
+                    }
+                    ok = true;
+                } catch (ex) {
+                    //
+                }
             }
-        } catch (ex) {
-            //
-        }
-    } else {
-        url = path.resolve(path.dirname(prev), url);
+        });
+    } else if (!path.isAbsolute(url)) {
+        let toCheck = alternatives(path.resolve(path.dirname(prev), url));
+        url = toCheck.find((f) => fs.existsSync(f));
     }
     return {
         file: url,
@@ -59,6 +87,7 @@ module.exports = function(options) {
     const defaults = options.options || {};
     let file;
     let css;
+    let last;
     return {
         name: 'sass-modules',
         transform(code, id) {
@@ -107,11 +136,21 @@ module.exports = function(options) {
                     } else {
                         jsCode += `export default '${css}';`;
                     }
+                    last = id;
                     return global.Promise.resolve({
                         code: jsCode,
                         map: jsMaps ? jsMaps : { mappings: '' },
                     });
                 });
+            }).catch((err) => {
+                last = id;
+                if (STYLE_EXTENSIONS.indexOf(path.extname(last)) !== -1) {
+                    return global.Promise.resolve({
+                        code: jsCode,
+                        map: { mappings: '' },
+                    });
+                }
+                return global.Promise.reject(err);
             });
         },
         ongenerate(options) {
