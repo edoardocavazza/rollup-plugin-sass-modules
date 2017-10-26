@@ -13,32 +13,60 @@ function stylize(css) {
     return ("\n\n(function(){\n    const head = document.head || document.getElementsByTagName('head')[0];\n    const style = document.createElement('style');\n    style.textContent = '" + css + "';\n    head.appendChild(style);\n})();\n");
 }
 
+function alternatives(url) {
+    var res = path.extname(url) ?
+        [url] :
+        STYLE_EXTENSIONS.map(function (ext) { return ("" + url + ext); });
+    if (path.basename(url) !== '_') {
+        for (var i = 0, len = res.length; i < len; i++) {
+            res.push(
+                path.join(
+                    path.dirname(res[i]),
+                    ("_" + (path.basename(res[i])))
+                )
+            );
+        }
+    }
+    return res;
+}
+
 function nodeResolver(url, prev, options) {
     var mod;
     if (!url.match(/^[./]/)) {
         if (url[0] === '~') {
             mod = url.substring(1);
         } else {
-            var tryToResolve = path.resolve(path.dirname(prev), url);
-            if (!fs.existsSync(tryToResolve)) {
+            var toCheck = alternatives(path.join(path.dirname(prev), url));
+            var resolved = toCheck.find(function (f) { return fs.existsSync(f); });
+            if (resolved) {
+                url = resolved;
+            } else {
                 mod = url;
             }
         }
     }
     if (mod) {
-        try {
-            url = resolve.sync(mod, {
-                basedir: path.dirname(prev) || process.cwd(),
-            });
-            var base = path.join(url.replace(mod, ''), '**/*');
-            if (includePaths.indexOf(base) === -1) {
-                includePaths.push(base);
+        var toCheck$1 = alternatives(mod);
+        var ok = false;
+        toCheck$1.forEach(function (modCheck) {
+            if (!ok) {
+                try {
+                    url = resolve.sync(modCheck, {
+                        basedir: path.dirname(prev) || process.cwd(),
+                    });
+                    var base = path.join(url.replace(modCheck, ''), '**/*');
+                    if (includePaths.indexOf(base) === -1) {
+                        includePaths.push(base);
+                    }
+                    ok = true;
+                } catch (ex) {
+                    //
+                }
             }
-        } catch (ex) {
-            //
-        }
-    } else {
-        url = path.resolve(path.dirname(prev), url);
+        });
+    } else if (!path.isAbsolute(url)) {
+        var toCheck$2 = alternatives(path.resolve(path.dirname(prev), url));
+        url = toCheck$2.find(function (f) { return fs.existsSync(f); });
     }
     return {
         file: url,
@@ -53,6 +81,7 @@ module.exports = function(options) {
     var defaults = options.options || {};
     var file;
     var css;
+    var last;
     return {
         name: 'sass-modules',
         transform: function transform(code, id) {
@@ -101,11 +130,21 @@ module.exports = function(options) {
                     } else {
                         jsCode += "export default '" + css + "';";
                     }
+                    last = id;
                     return global.Promise.resolve({
                         code: jsCode,
                         map: jsMaps ? jsMaps : { mappings: '' },
                     });
                 });
+            }).catch(function (err) {
+                last = id;
+                if (STYLE_EXTENSIONS.indexOf(path.extname(last)) !== -1) {
+                    return global.Promise.resolve({
+                        code: jsCode,
+                        map: { mappings: '' },
+                    });
+                }
+                return global.Promise.reject(err);
             });
         },
         ongenerate: function ongenerate(options) {
