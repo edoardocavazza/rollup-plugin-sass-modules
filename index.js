@@ -155,6 +155,7 @@ module.exports = function(options) {
             });
         },
         ongenerate(options) {
+            let promise = global.Promise.resolve();
             if (defaults.outFile) {
                 file = '';
                 let bundle = options.bundle;
@@ -168,12 +169,22 @@ module.exports = function(options) {
                                     includePaths,
                                     importer: (url, prev) => importer(url, prev, options),
                                 }, defaults);
-                                file += sass.renderSync(sassOptions).css.toString();
+                                let css = sass.renderSync(sassOptions).css.toString();
+                                let post = processor(css);
+                                if (!(post instanceof global.Promise)) {
+                                    post = global.Promise.resolve(post);
+                                }
+                                promise = promise.then(() =>
+                                    post.then((css) => {
+                                        file += css;
+                                    })
+                                );
                             }
                         });
                     }
                 });
             }
+            return promise;
         },
         onwrite() {
             if (defaults.outFile && file) {
