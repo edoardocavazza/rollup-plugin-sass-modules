@@ -74,6 +74,15 @@ function nodeResolver(url, prev, options) {
     };
 }
 
+function inline(str) {
+    if ( str === void 0 ) str = '';
+
+    return str.toString()
+        .replace(/\\/g, '\\\\')
+        .replace(/'/g, '\\\'')
+        .replace(/\n/g, '');
+}
+
 module.exports = function(options) {
     var filter = rollupPluginutils.createFilter(options.include || ['**/*.scss', '**/*.sass'], options.exclude);
     var importer = options.importer || nodeResolver;
@@ -112,14 +121,7 @@ module.exports = function(options) {
                     }
                 });
             }).then(function (result) {
-                var jsMaps;
-                css = result.css.toString()
-                    .replace(/\\/g, '\\\\')
-                    .replace(/'/g, '\\\'')
-                    .replace(/\n/g, '');
-                if (result.map) {
-                    jsMaps = result.map.toString();
-                }
+                css = inline(result.css);
                 var post = processor(css);
                 if (!(post instanceof global.Promise)) {
                     post = global.Promise.resolve(post);
@@ -133,12 +135,13 @@ module.exports = function(options) {
                     last = id;
                     return global.Promise.resolve({
                         code: jsCode,
-                        map: jsMaps ? jsMaps : { mappings: '' },
+                        map: { mappings: '' },
                     });
                 });
             }).catch(function (err) {
                 last = id;
                 if (STYLE_EXTENSIONS.indexOf(path.extname(last)) !== -1) {
+                    jsCode += "\nexport default '" + (inline(err)) + "';";
                     return global.Promise.resolve({
                         code: jsCode,
                         map: { mappings: '' },
