@@ -87,6 +87,8 @@ function inline(str = '') {
         .replace(/\n/g, '');
 }
 
+const exported = [];
+
 module.exports = function(options) {
     const filter = rollupPluginutils.createFilter(options.include || ['**/*.scss', '**/*.sass'], options.exclude);
     const importer = options.importer || nodeResolver;
@@ -94,7 +96,6 @@ module.exports = function(options) {
     const defaults = options.options || {};
     let file;
     let active = [];
-    let exported = [];
     return {
         name: 'sass-modules',
         transform(code, id) {
