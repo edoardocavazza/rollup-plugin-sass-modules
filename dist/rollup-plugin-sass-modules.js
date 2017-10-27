@@ -89,8 +89,8 @@ module.exports = function(options) {
     var processor = options.processor || (function (code) { return global.Promise.resolve(code); });
     var defaults = options.options || {};
     var file;
-    var css;
-    var last;
+    var active = [];
+    var exported = [];
     return {
         name: 'sass-modules',
         transform: function transform(code, id) {
@@ -102,8 +102,17 @@ module.exports = function(options) {
                 match = importRegex.exec(code);
             }
             matches = matches.map(function (url) { return importer(url, id).file; });
-            var jsCode = '';
-            jsCode += matches.map(function (url, index) { return ("import STYLE_" + index + " from '" + url + "';"); }).join('\n');
+            active.push.apply(active, matches);
+            var jsCode = matches.map(function (url, index) { return ("import STYLE_" + index + " from '" + url + "';"); }).join('\n');
+            if (active.indexOf(id) !== -1) {
+                active.splice(active.indexOf(id), 1);
+                jsCode += '\nexport default \'\';';
+                return global.Promise.resolve({
+                    code: jsCode,
+                    map: { mappings: '' },
+                });
+            }
+            exported.push(id);
             var sassOptions = Object.assign({
                 file: id,
                 data: code,
@@ -121,8 +130,7 @@ module.exports = function(options) {
                     }
                 });
             }).then(function (result) {
-                css = inline(result.css);
-                var post = processor(css);
+                var post = processor(inline(result.css));
                 if (!(post instanceof global.Promise)) {
                     post = global.Promise.resolve(post);
                 }
@@ -132,51 +140,33 @@ module.exports = function(options) {
                     } else {
                         jsCode += "export default '" + css + "';";
                     }
-                    last = id;
                     return global.Promise.resolve({
                         code: jsCode,
                         map: { mappings: '' },
                     });
                 });
-            }).catch(function (err) {
-                last = id;
-                if (STYLE_EXTENSIONS.indexOf(path.extname(last)) !== -1) {
-                    jsCode += "\nexport default '" + (inline(err)) + "';";
-                    return global.Promise.resolve({
-                        code: jsCode,
-                        map: { mappings: '' },
-                    });
-                }
-                return global.Promise.reject(err);
             });
         },
         ongenerate: function ongenerate(options) {
             var promise = global.Promise.resolve();
             if (defaults.outFile) {
                 file = '';
-                var bundle = options.bundle;
-                bundle.modules.forEach(function (mod) {
-                    if (STYLE_EXTENSIONS.indexOf(path.extname(mod.id)) === -1) {
-                        mod.dependencies.forEach(function (dep) {
-                            if (STYLE_EXTENSIONS.indexOf(path.extname(dep)) !== -1) {
-                                var sassOptions = Object.assign({
-                                    file: dep,
-                                    data: fs.readFileSync(dep, 'utf8'),
-                                    includePaths: includePaths,
-                                    importer: function (url, prev) { return importer(url, prev, options); },
-                                }, defaults);
-                                var css = sass.renderSync(sassOptions).css.toString();
-                                var post = processor(css);
-                                if (!(post instanceof global.Promise)) {
-                                    post = global.Promise.resolve(post);
-                                }
-                                promise = promise.then(function () { return post.then(function (css) {
-                                        file += css;
-                                    }); }
-                                );
-                            }
-                        });
+                exported.forEach(function (id) {
+                    var sassOptions = Object.assign({
+                        file: id,
+                        data: fs.readFileSync(id, 'utf8'),
+                        includePaths: includePaths,
+                        importer: function (url, prev) { return importer(url, prev, options); },
+                    }, defaults);
+                    var css = sass.renderSync(sassOptions).css.toString();
+                    var post = processor(css);
+                    if (!(post instanceof global.Promise)) {
+                        post = global.Promise.resolve(post);
                     }
+                    promise = promise.then(function () { return post.then(function (css) {
+                            file += css;
+                        }); }
+                    );
                 });
             }
             return promise;
@@ -184,6 +174,7 @@ module.exports = function(options) {
         onwrite: function onwrite() {
             if (defaults.outFile && file) {
                 fs.writeFileSync(defaults.outFile, file);
+                file = null;
                 return global.Promise.resolve();
             }
         },
