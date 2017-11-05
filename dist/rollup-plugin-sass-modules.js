@@ -3,7 +3,7 @@
 var fs = require('fs');
 var path = require('path');
 var rollupPluginutils = require('rollup-pluginutils');
-var sass = require('node-sass');
+var sass = require('sass');
 var resolve = require('resolve');
 var importRegex = /@import[\s'"]*([^;'"]*)[;'"]/g;
 var includePaths = ['node_modules'];
@@ -116,7 +116,6 @@ module.exports = function(options) {
             exported.push(id);
             var sassOptions = Object.assign({
                 file: id,
-                data: code,
                 includePaths: includePaths,
                 importer: function (url, prev) { return importer(url, prev, options); },
             }, defaults);
@@ -155,7 +154,6 @@ module.exports = function(options) {
                 exported.forEach(function (id) {
                     var sassOptions = Object.assign({
                         file: id,
-                        data: fs.readFileSync(id, 'utf8'),
                         includePaths: includePaths,
                         importer: function (url, prev) { return importer(url, prev, options); },
                     }, defaults);
