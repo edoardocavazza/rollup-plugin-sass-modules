@@ -5,7 +5,7 @@ Import and compile SASS files with [rollup](https://rollupjs.org/). It supports 
 
 ## Features
 
-- Compile SASS files with `node-sass`.
+- Compile SASS files with `sass`.
 - Export dependencies tree to `rollup`.
 - Support for sourcemaps.
 - Extract CSS files.
@@ -44,7 +44,7 @@ minimatch glob pattern (or array) of files to exclude.
 
 ### `options`
 
-See `node-sass` [options](https://github.com/sass/node-sass#options).
+See `dart-sass` [options](https://github.com/sass/dart-sass#javascript-api).
 
 If `outFile` option is provided, the plugin will automatically extract and write the compiled CSS.
 
