@@ -1,7 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const rollupPluginutils = require('rollup-pluginutils');
-const sass = require('node-sass');
+const sass = require('sass');
 const resolve = require('resolve');
 const importRegex = /@import[\s'"]*([^;'"]*)[;'"]/g;
 const includePaths = ['node_modules'];
@@ -120,7 +120,6 @@ module.exports = function(options) {
             exported.push(id);
             let sassOptions = Object.assign({
                 file: id,
-                data: code,
                 includePaths,
                 importer: (url, prev) => importer(url, prev, options),
             }, defaults);
@@ -159,7 +158,6 @@ module.exports = function(options) {
                 exported.forEach((id) => {
                     let sassOptions = Object.assign({
                         file: id,
-                        data: fs.readFileSync(id, 'utf8'),
                         includePaths,
                         importer: (url, prev) => importer(url, prev, options),
                     }, defaults);
